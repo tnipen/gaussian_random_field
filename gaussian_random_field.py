@@ -19,16 +19,17 @@ import sys
 """
 def downscale_field(array, n, rx, rt, a):
     X, Y, T = array.shape
-    T2 = T * n
+    T2 = (T - 1) * n + 1
 
     # Linearly interpolate the forecast to new time dimension
     func = scipy.interpolate.interp1d(np.linspace(0, 1, T), array, axis=2)
-    ret = func(np.linspace(0, 1.0, T2))
+    ret = func(np.linspace(0, 1, T2))
 
     noise = gaussian_random_field(X, Y, T2, rx, rt)
 
     """ Adjust the field by adding the noise. This is done in log windspeed space.
     """
+    noise = force_zero(noise, n)
     new_array = np.exp(np.log(ret) + noise * a)
     # new_array = noise
 
@@ -64,6 +65,27 @@ def gaussian_random_field(X, Y, T, rx, rt):
     noise2 = noise2 / np.std(noise2)
     return noise2.real
 
+"""
+Ensure the noise field is 0 at timesteps [0, n, 2n, 3n, ...]
+"""
+def force_zero(array, n):
+    X, Y, T = array.shape
+    T0 = T // n
+    ret = np.zeros(array.shape)
+    for i in range(T):
+        if i == T-1:
+            ret[:, :, i] = 0
+        else:
+            I0 = i // n * n
+            I1 = I0 + n
+            lower = array[:, :, I0]
+            upper = array[:, :, I1]
+            p = float(i - I0) / (I1 - I0)
+            print(i, I0, I1, p)
+            ret[:, :, i] = array[:, :, i] - (lower + p * (upper - lower))
+    return ret
+
+
 
 """ I think this calculates how much to weight different fourier components ... """
 def Pk(kx, ky, kt, rx, rt):
@@ -83,24 +105,34 @@ def fftIndgen(n):
     return a + b
 
 
-np.random.seed(1000)
+np.random.seed(10000)
 
-# Create a EC wind forecast with 5 timesteps of 6 hours
-raw_forecast = 3 * np.ones([100,100,5])
+# Create a 360 hour EC wind forecast
+X = 10
+Y = 10
+T = 61
+raw_forecast = 3 * np.ones([X,Y,T])
 
 # Downscale to 1 hour resolution
-x = downscale_field(raw_forecast, n=6, rx=4, rt=2, a=0.1)
+x = downscale_field(raw_forecast, n=6, rx=4, rt=4, a=0.1)
 
-T = x.shape[2]
-for i in range(T):
-    mpl.subplot(int(np.sqrt(T)), T / int(np.sqrt(T))+1,i+1)
+T2 = x.shape[2]
+"""
+for i in range(T2):
+    mpl.subplot(int(np.sqrt(T2)), T2 / int(np.sqrt(T2))+1,i+1)
     mpl.pcolormesh(x[:, :, i], vmin=np.min(x[:]), vmax=np.max(x[:]), cmap="RdBu_r")
     mpl.gca().set_aspect(1)
     mpl.title("Timestep %d" % i)
 mpl.show()
+"""
 
 # Show a timeseries plot
-mpl.plot(x[x.shape[0]/2, x.shape[1]/2, :])
+Ix = x.shape[0]/2
+Iy = x.shape[1]/2
+mpl.plot(np.linspace(0, T-1, T2), x[Ix, Iy], 'o-', color='blue', label="Downscaled")
+mpl.plot(np.linspace(0, T-1, T), raw_forecast[Ix, Iy], 'o-', color='orange', label="Raw")
+mpl.xticks(range(T))
+mpl.grid()
 mpl.title("Timeseries for one point")
 mpl.xlabel("Time (h)")
 mpl.ylabel("Wind speed (m/s)")
