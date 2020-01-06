@@ -82,12 +82,8 @@ def Pk(kx, ky, kt, rx, rt):
 
 """ Not sure what this does ... """
 def fftIndgen(n):
-    # a = range(0, n/2+1)
-    # b = range(1, n/2)
-    # b.reverse()
-    # b = [-i for i in b]
     a = list(range(0, n//2+1))
-    b = list(range(1, n//2))
+    b = list(range(1, (n+1)//2))
     b.reverse()
     b = [-i for i in b]
     return a + b
