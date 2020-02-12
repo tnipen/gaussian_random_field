@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.interpolate
 import sys
+import time
 
 """ Based loosely on http://andrewwalker.github.io/statefultransitions/post/gaussian-fields/ """
 
@@ -56,20 +57,31 @@ def downscale_field(array, n, rx, rt, a, keep_ec_values=False):
 def gaussian_random_field(X, Y, T, rx, rt):
     # Create Gaussian noise field
     rand = np.random.normal(size = (X, Y, T))
-
     noise = np.fft.fftn(rand)
+    amplitude = _amplitude(X, Y, T, rx, rt)
+    noise2 = np.fft.ifftn(noise * amplitude)
+    # Normalize std to be 1
+    noise2 = noise2 / np.std(noise2)
+    return noise2.real
+
+def _amplitude_old(X, Y, T, rx, rt):
     amplitude = np.zeros([X, Y, T])
     for i, kx in enumerate(fftIndgen(X)):
         for j, ky in enumerate(fftIndgen(Y)):
             for t, kt in enumerate(fftIndgen(T)):
                 amplitude[i, j, t] = Pk(kx, ky, kt, rx, rt)
+    return amplitude
 
-    noise2 = np.fft.ifftn(noise * amplitude)
-
-    # Normalize std to be 1
-    noise2 = noise2 / np.std(noise2)
-    return noise2.real
-
+def _amplitude(X, Y, T, rx, rt):
+    freq_X = fftIndgen(X)
+    freq_Y = fftIndgen(Y)
+    freq_T = fftIndgen(T)
+    freq_X2, freq_Y2 = np.meshgrid(np.power(freq_X,2), np.power(freq_Y,2))
+    sqrt_freq = np.transpose(np.sqrt(freq_X2 + freq_Y2))
+    abs_freq_T = np.abs(freq_T)
+    spatial = np.power(sqrt_freq,-rx/2.0, np.zeros_like(sqrt_freq, dtype=float), where=sqrt_freq!=0)
+    temporal = np.power(abs_freq_T,-rt/2.0, np.zeros_like(abs_freq_T, dtype=float), where=abs_freq_T!=0)
+    return np.outer(spatial, temporal).reshape(X,Y,T)
 
 """ I think this calculates how much to weight different fourier components ... """
 def Pk(kx, ky, kt, rx, rt):
@@ -116,3 +128,12 @@ ax.set_title("Timeseries for one point")
 ax.set_xlabel("Time (h)")
 ax.set_ylabel("Wind speed (m/s)")
 
+# Test _amplitude vs _amplitude_old
+X, Y, T, rx, rt = 10, 100, 500, 4.0, 0.5
+t0 = time.time()
+amp_old = _amplitude_old(X, Y, T, rx, rt)
+print("Time to create amplitude old: {}".format(time.time()-t0))
+t0 = time.time()
+amp_new = _amplitude(X, Y, T, rx, rt)
+print("Time to create amplitude new: {}".format(time.time()-t0))
+np.testing.assert_array_equal(amp_new, amp_old)
